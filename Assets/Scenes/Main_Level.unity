@@ -417,9 +417,33 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: foodPrefab
+      value: 
+      objectReference: {fileID: 8490163316365906645, guid: be504d5f9085bbc44b047cd44a7061fb, type: 3}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: poisonPrefab
+      value: 
+      objectReference: {fileID: 9090323003324393657, guid: 6d3bbdbf30297cf40924a06885e1b041, type: 3}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
       propertyPath: snakeController
       value: 
       objectReference: {fileID: 1315278741}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: foodSpawnInterval
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: poisonSpawnInterval
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: foodDestroyDelayTime
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 2027488328914621453, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
+      propertyPath: poisonDestroyDelayTime
+      value: 10
+      objectReference: {fileID: 0}
     - target: {fileID: 2027488328914621454, guid: f49ea0755ba470c43893e675577ba53e, type: 3}
       propertyPath: m_Name
       value: LevelGrid
@@ -487,7 +511,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8759044894406058023, guid: 8563b21bda8053d4e97a23c914c2ca36, type: 3}
       propertyPath: wrapAround
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8759044894406058023, guid: 8563b21bda8053d4e97a23c914c2ca36, type: 3}
       propertyPath: maxBodySize
@@ -495,11 +519,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8759044894406058023, guid: 8563b21bda8053d4e97a23c914c2ca36, type: 3}
       propertyPath: snakeBodySize
-      value: 5
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8759044894406058023, guid: 8563b21bda8053d4e97a23c914c2ca36, type: 3}
       propertyPath: gridPosition.x
-      value: 2
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 8759044894406058023, guid: 8563b21bda8053d4e97a23c914c2ca36, type: 3}
       propertyPath: gridPosition.y
