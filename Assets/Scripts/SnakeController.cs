@@ -2,6 +2,10 @@
     using System.Collections.Generic;
     using UnityEngine;
 
+/// <summary>
+/// Controls snake movement, body layout, sprite orientation, power-ups and collisions.
+/// The script uses a grid-based movement system paired with LevelGridController for world conversions.
+/// </summary>
 public class SnakeController : MonoBehaviour
 {
     //Set player scheme (for 2-player Co-Op)
@@ -56,6 +60,38 @@ public class SnakeController : MonoBehaviour
     [SerializeField] private Sprite tailSprite;
 
 
+    [Header("Power-Up Settings")]
+    [Tooltip("How long the shield stays active.")]
+    [SerializeField] private float shieldDurationDefault = 3f;
+
+    [Tooltip("How long the score boost stays active.")]
+    [SerializeField] private float scoreBoostDurationDefault = 3f;
+
+    [Tooltip("How long the speed boost stays active.")]
+    [SerializeField] private float speedUpDurationDefault = 3f;
+
+    [Tooltip("Multiplier for speed up. < 1 = faster snake.")]
+    [SerializeField] private float speedUpFactor = 0.5f;
+
+
+    //Powr-up state
+    private bool shieldActive;
+    private float shieldTimer;
+
+    private bool scoreBoostActive;
+    private float scoreBoostTimer;
+
+    private bool speedUpActive;
+    private float speedUpTimer;
+    private float baseGridMoveMaxTimer;
+
+    //Public Power-Up flags for other systems (like LevelGridController)
+    public bool IsShieldActive => shieldActive;
+    public bool IsScoreBoostActive => scoreBoostActive;
+    public bool IsSpeedUpActive => speedUpActive;
+    public float ScoreMultiplier => scoreBoostActive ? 2f : 1f;
+
+    //Movement / body management
     private List<Vector2Int> snakeMovePositionList;  //Store position of snake 
     private List<GameObject> bodySegments; //Game object of body segments, sync with snakeMovePositionList by index
     private int minBodySize = 1; //Minimum allowed body size
@@ -90,6 +126,9 @@ public class SnakeController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        //Save original speed for SpeedUp revert
+        baseGridMoveMaxTimer = gridMoveMaxTimer;
+
         //Start movement timer full so snake moves after one interval
         gridMoveTimer = gridMoveMaxTimer;
 
@@ -145,6 +184,7 @@ public class SnakeController : MonoBehaviour
             UpdateBodySprite();
         }
 
+        //If wrapAround disabled, verify initial Layout is inside grid
         if (!wrapAround && levelGridController != null)
         {
             bool layoutOutside = false;
@@ -178,14 +218,17 @@ public class SnakeController : MonoBehaviour
         if (!isAlive) return; //freeze input when dead
         HandleInput();  //Read player input
         HandleGridMovement(); //Move snake on grid-based timer
+        HandlePowerUpTimers(); //Update power-up durations
     }
 
-    //Return current grow amount for futher features
+    //Return current grow amount for further features
     public int GetSnakeBodyGrowSize() => snakeBodyGrowSize;
 
-    //Return current shrink amount for futher features
+    //Return current shrink amount for further features
     public int GetSnakeBodyShrinkSize() => snakeBodyShrinkSize;
 
+
+    #region Input
 
     //Read input and set nextDirection (buffered). Do not directly override gridMoveDirection here.
     private void HandleInput()
@@ -218,6 +261,95 @@ public class SnakeController : MonoBehaviour
         nextMoveDirection = desired;
     }
 
+    #endregion
+
+    #region Power-Ups Handling
+
+    /// <summary>
+    /// Called by LevelGridController when a pick-up is collected.
+    /// Activates the appropriate state and timers on the snakes.
+    /// </summary>
+    public void ActivatePowerUP(PowerUpType type, float duration)
+    {
+        switch (type)
+        {
+            case PowerUpType.Shield:
+                shieldActive = true;
+                shieldTimer = duration > 0 ? duration : shieldDurationDefault;
+                break;
+
+            case PowerUpType.ScoreBoost:
+                scoreBoostActive = true;
+                scoreBoostTimer = duration > 0 ? duration : scoreBoostDurationDefault;
+                break;
+
+            case PowerUpType.SpeedUp:
+                if (!speedUpActive)
+                {
+                    baseGridMoveMaxTimer = gridMoveMaxTimer;
+                }
+                speedUpActive = true;
+                speedUpTimer = duration > 0 ? duration : speedUpDurationDefault;
+
+                if (speedUpFactor <= 0f) speedUpFactor = 0.5f;
+                gridMoveMaxTimer = baseGridMoveMaxTimer * speedUpFactor;
+                break;
+        }
+        Debug.Log($"{name} activated power-up: {type} for {duration} seconds");
+    }
+
+    //Upadate timers each frame and disable effects when timers end
+    private void HandlePowerUpTimers()
+    {
+        float dt = Time.deltaTime;
+
+        if (shieldActive)
+        {
+            shieldTimer -= dt;
+            if (shieldTimer <= 0f)
+            {
+                shieldActive = false;
+                shieldTimer = 0f;
+            }
+        }
+
+        if (scoreBoostActive)
+        {
+            scoreBoostTimer -= dt;
+            if (scoreBoostTimer <= 0f)
+            {
+                scoreBoostActive = false;
+                scoreBoostTimer = 0f;
+            }
+        }
+
+        if (speedUpActive)
+        {
+            speedUpTimer -= dt;
+            if (speedUpTimer <= 0f)
+            {
+                speedUpActive = false;
+                speedUpTimer = 0f;
+                gridMoveMaxTimer = baseGridMoveMaxTimer;  //Back to normal speed
+            }
+        }
+    }
+
+
+    //Use and remove shield once, returns true if shield consumed and the hit should be ignored.
+    private bool TryConsumeShield()
+    {
+        if (!shieldActive) return false;
+
+        shieldActive = false;
+        shieldTimer = 0f;
+        Debug.Log($"{name} shield consumed!");
+        return true;
+    }
+
+    #endregion
+
+    #region Body Layout And Movement
 
     //Create initial body positions behind the head, and set up tail history
     private void BuildInitialBodyLayout(Vector2Int layoutDirection)
@@ -303,6 +435,25 @@ public class SnakeController : MonoBehaviour
             //if wrapArround is disabled and we go out of bounds, trigger wall hit/death
             if (!wrapAround && levelGridController != null && !levelGridController.IsInsideGrid(gridPosition))
             {
+                //Try shield first
+                if (TryConsumeShield())
+                {
+                    //Cancel this move: stay on previous cell
+                    gridPosition = previousHead;
+
+                    if (levelGridController != null)
+                    {
+                        transform.position = levelGridController.GridToWorld(gridPosition);
+                    }
+                    else
+                    {
+                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
+                    }
+                    //Stop current movement, player can choose a new direction
+                    gridMoveDirection = Vector2Int.zero;
+                    nextMoveDirection = Vector2Int.zero;
+                    return;
+                }
                 // Stop movement and trigger wall hit
                 gridMoveDirection = Vector2Int.zero;
                 nextMoveDirection = Vector2Int.zero;
@@ -326,7 +477,7 @@ public class SnakeController : MonoBehaviour
                 snakeMovePositionList.Add(tailBefore);
             }
 
-            //Update LastVacatedTailCell and tail Histoty
+            //Update LastVacatedTailCell and tail histoty
             lastVacatedTailCell = tailBefore;
 
             tailHistory.Insert(0, tailBefore);
@@ -335,7 +486,7 @@ public class SnakeController : MonoBehaviour
                 tailHistory.RemoveAt(tailHistory.Count -1);
             }
 
-            //Trim extra position so list lenght matches snakeBodySize
+            //Trim extra position so list length matches snakeBodySize
             if (snakeMovePositionList.Count > snakeBodySize)
             {
                 snakeMovePositionList.RemoveRange(snakeBodySize, snakeMovePositionList.Count - snakeBodySize);
@@ -415,7 +566,11 @@ public class SnakeController : MonoBehaviour
 
     }
 
-    //Called when snake hit a wall
+    #endregion
+
+    #region Death / Collisions
+
+    //Called when snake hit a wall (after shield already failed / not present)
     private void OnHitWall()
     {
         if (!isAlive) return;
@@ -497,6 +652,10 @@ public class SnakeController : MonoBehaviour
         return Vector2Int.zero;
 
     }
+
+    #endregion
+
+    #region Grow / Shrink / Sprites
 
 
     /// <summary>
@@ -659,7 +818,7 @@ public class SnakeController : MonoBehaviour
             }
 
 
-            //Non-tail segments: decide staight/corner srites
+            //Non-tail segments: decide straight/corner sprites
             Vector2Int posCloserToHead = (i == 0) ? gridPosition : snakeMovePositionList[i - 1];
             Vector2Int posFurtherFromHead;
 
@@ -730,6 +889,8 @@ public class SnakeController : MonoBehaviour
             }
         }
     }
+
+    #endregion
 
     private void OnDisable()
     {
