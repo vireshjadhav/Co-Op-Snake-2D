@@ -1,6 +1,7 @@
     using System.Collections;
     using System.Collections.Generic;
-    using UnityEngine;
+using Unity.VisualScripting;
+using UnityEngine;
 
 /// <summary>
 /// Controls snake movement, body layout, sprite orientation, power-ups and collisions.
@@ -36,11 +37,6 @@ public class SnakeController : MonoBehaviour
     [Tooltip("If FALSE, SnakeBodySize initially Forced to 1")]
     [SerializeField] private bool startMovingOnAwake = true; //If true, snake starts moving automatically, if fasle, it waits for player input. 
     [SerializeField] private Vector2Int defaultStartDirection = new Vector2Int(1, 0); //Default movement direction at the start(right).
-
-
-    [Header("GamePlay")]
-    [Tooltip("If true, moving off one edge will make the snake appear on the opposite edge")]
-    [SerializeField] private bool wrapAround = true; //Enable/disable screen wrap.
 
 
     [Header("References")]
@@ -136,7 +132,7 @@ public class SnakeController : MonoBehaviour
         snakeBodySize = Mathf.Max(minBodySize, snakeBodySize);
 
         //Warn if wrapAround is off but we have no grid controller (cannot check bounds)
-        if (!wrapAround && levelGridController == null) Debug.LogWarning($"{name}: wrapAround is false but levelGridController not assigned.");
+        if (!levelGridController.isWrapAround && levelGridController == null) Debug.LogWarning($"{name}: wrapAround is false but levelGridController not assigned.");
         //Warn if we have no visual prefab (Logic still works, but no body visuals)
         if (bodySegmentPrefab == null) Debug.LogWarning($"{name}: bodySegmentPrefab not assigned. Snake will grow logically but no visuals.");
 
@@ -185,7 +181,7 @@ public class SnakeController : MonoBehaviour
         }
 
         //If wrapAround disabled, verify initial Layout is inside grid
-        if (!wrapAround && levelGridController != null)
+        if (!levelGridController.isWrapAround && levelGridController != null)
         {
             bool layoutOutside = false;
 
@@ -365,7 +361,7 @@ public class SnakeController : MonoBehaviour
         {
             Vector2Int segPos = gridPosition - layoutDirection *i;
 
-            if (wrapAround && levelGridController != null)
+            if (levelGridController.isWrapAround && levelGridController != null)
             {
                 segPos = WrapPosition(segPos);
             }
@@ -379,7 +375,7 @@ public class SnakeController : MonoBehaviour
             Vector2Int tailGrid = snakeMovePositionList[snakeMovePositionList.Count - 1];
             Vector2Int behindTail = tailGrid - layoutDirection;
 
-            if (wrapAround && levelGridController != null)
+            if (levelGridController.isWrapAround && levelGridController != null)
             {
                 behindTail = WrapPosition(behindTail);
             }
@@ -390,7 +386,7 @@ public class SnakeController : MonoBehaviour
         {
             //If no body segments, use cell behind the head.
             Vector2Int behindHead = gridPosition - layoutDirection;
-            if (wrapAround && levelGridController != null)
+            if (levelGridController.isWrapAround && levelGridController != null)
             {
                 behindHead = WrapPosition(behindHead);
             }
@@ -433,7 +429,7 @@ public class SnakeController : MonoBehaviour
             Vector2Int newPos = WrapPosition(gridPosition);
 
             //if wrapArround is disabled and we go out of bounds, trigger wall hit/death
-            if (!wrapAround && levelGridController != null && !levelGridController.IsInsideGrid(gridPosition))
+            if (!levelGridController.isWrapAround && levelGridController != null && !levelGridController.IsInsideGrid(gridPosition))
             {
                 //Try shield first
                 if (TryConsumeShield())
@@ -462,14 +458,27 @@ public class SnakeController : MonoBehaviour
 
             gridPosition = newPos;  //ensure internal position matches final applied position
 
+            if (levelGridController != null)
+                transform.position = levelGridController.GridToWorld(gridPosition);
+            else
+                transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+
+            snakeMovePositionList.Insert(0, previousHead);
+
+            bool collisionHandled = HandleSelfAndSnakeCollisions(gridPosition, previousHead, tailBefore);
+            if (collisionHandled)
+            {
+                return;
+            }
+
             //Move Head in world space
             if (levelGridController != null)
                 transform.position = levelGridController.GridToWorld(gridPosition);
             else
                 transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
-            //Insert previous head position as first body segment position.
-            snakeMovePositionList.Insert(0, previousHead);
+            ////Insert previous head position as first body segment position.
+            //snakeMovePositionList.Insert(0, previousHead);
 
             //If list is shorter than body size, extend using old tail position
             while (snakeMovePositionList.Count < snakeBodySize)
@@ -542,7 +551,7 @@ public class SnakeController : MonoBehaviour
     //Handle wrapping around the grid, if enabled
     private Vector2Int WrapPosition(Vector2Int pos)
     {
-        if (levelGridController == null || !wrapAround) return pos;
+        if (levelGridController == null || !levelGridController.isWrapAround) return pos;
 
         int w = levelGridController.width;
         int h = levelGridController.height;
@@ -594,6 +603,7 @@ public class SnakeController : MonoBehaviour
     {
         yield return new WaitForSeconds(delay);
         Destroy(gameObject);
+        DestroyAllBodySegments();
     }
 
     //Get all grid Positions occupied by the snake (head + body)
@@ -615,7 +625,7 @@ public class SnakeController : MonoBehaviour
     {
         Vector2Int delta = b - a;
 
-        if (wrapAround && levelGridController != null)
+        if (levelGridController.isWrapAround && levelGridController != null)
         {
             int w = levelGridController.width;
             int h = levelGridController.height;
@@ -653,6 +663,122 @@ public class SnakeController : MonoBehaviour
 
     }
 
+    //Returns true if collision was handled (move cancelled or snake died) and caller should stop processing the move.
+    private bool HandleSelfAndSnakeCollisions(Vector2Int newHeadPos, Vector2Int previousHead, Vector2Int tailBefore)
+    {
+        //Self-collision: check own body
+        int checkCount = Mathf.Min(snakeMovePositionList.Count, snakeBodySize);
+        for (int i = 0; i < checkCount; i++)
+        {
+            var pos = snakeMovePositionList[i];
+
+            if (pos == tailBefore)
+                continue;
+
+            if (pos == newHeadPos)
+            {
+                Debug.Log($"{name}: Self-collision at {newHeadPos}");
+
+                //If shiedl available, consume it and cancel the move(revert to previousHead).
+                if (TryConsumeShield())
+                {
+                    gridPosition = previousHead;
+                    if (levelGridController != null)
+                        transform.position = levelGridController.GridToWorld(gridPosition);
+                    else
+                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+
+                    gridMoveDirection = Vector2Int.zero;
+                    nextMoveDirection = Vector2Int.zero;
+                    return true;
+                }
+
+                OnCollideWithSnake();  //No shield - die.
+                return true;
+            }
+        }
+
+        //Collision with other snakes(Co-Oo). Check all other snakes' occupied cell.
+        if (GameController.instance != null)
+        {
+            var all = GameController.instance.GetAllSnakes();
+            foreach (var other in all)
+            {
+                if (other == null || other == this) continue;
+
+                var otherOcc = other.GetOccupiedGridPositions();
+
+                foreach (var p in otherOcc)
+                {
+                    //Only treat as collision when their occupied pos matches our head pos
+                    if (p != newHeadPos) continue;
+
+                    Debug.Log($"{name}: Collided with other snake '{other.name}' at {newHeadPos}");
+
+                    //Shield consumes and cancels move
+                    if (TryConsumeShield())
+                    {
+                        gridPosition = previousHead;
+                        if (levelGridController != null)
+                            transform.position = levelGridController.GridToWorld(gridPosition);
+                        else
+                            transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
+
+                        gridMoveDirection = Vector2Int.zero;
+                        nextMoveDirection = Vector2Int.zero;
+                        return true;
+                    }
+
+                    OnCollideWithSnake();
+                    return true;
+                }
+            }
+        }
+        else
+        {
+            //Fallback: scene query if GameController isn't present
+            var sceneSnakes = FindObjectsOfType<SnakeController>();
+            foreach (var other in sceneSnakes)
+            {
+                if (other == null || other == this) continue;
+                var otherOcc = other.GetOccupiedGridPositions();
+                foreach (var p in otherOcc)
+                {
+                    if (p != newHeadPos) continue;
+
+                    Debug.Log($"{name}: collided (fallback) with snake '{other.name}' at {newHeadPos}");
+
+                    if (TryConsumeShield())
+                    {
+                        gridPosition = previousHead;
+                        if (levelGridController != null)
+                            transform.position = levelGridController.GridToWorld(gridPosition);
+                        else
+                            transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+
+                        gridMoveDirection = Vector2Int.zero;
+                        nextMoveDirection = Vector2Int.zero;
+                        return true;
+                    }
+                    OnCollideWithSnake();
+                    return true;
+                }
+            }
+        }
+
+        return false; //no collision handled
+        
+    }
+
+    private void OnCollideWithSnake()
+    {
+        if(!isAlive) return;
+        isAlive = false;
+        gridMoveDirection = Vector2Int.zero;
+        nextMoveDirection = Vector2Int.zero;
+        
+        Die();
+    }
     #endregion
 
     #region Grow / Shrink / Sprites
@@ -888,6 +1014,23 @@ public class SnakeController : MonoBehaviour
 
             }
         }
+    }
+
+    /// <summary>
+    /// Destroys all visual body segments and clears internal position lists.
+    /// Called when the snake dies.
+    /// </summary>
+    private void DestroyAllBodySegments()
+    {
+        foreach(var seg in bodySegments)
+        {
+            if (seg != null)
+                Destroy(seg);
+        }
+
+        bodySegments.Clear();
+        snakeMovePositionList?.Clear();
+        tailHistory?.Clear();
     }
 
     #endregion
