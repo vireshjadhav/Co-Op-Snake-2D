@@ -12,6 +12,14 @@ public class GameController : MonoBehaviour
     [SerializeField] private GameObject snakePlayer02;
 
 
+    [Header("Score")]
+    [SerializeField] private int foodScore = 10;
+    [SerializeField] private int poisonPenalty = 5;
+
+
+    private Dictionary<SnakeController, int> playerScores = new Dictionary<SnakeController, int>();
+
+
     //Singleton instance
     public static GameController instance { get; private set; }
 
@@ -61,6 +69,10 @@ public class GameController : MonoBehaviour
         if (!snakes.Contains(s)) 
             snakes.Add(s);
 
+
+        if (!playerScores.ContainsKey(s))
+            playerScores[s] = 0;
+
         Debug.Log($"{s.name} Register");
     }
 
@@ -69,6 +81,9 @@ public class GameController : MonoBehaviour
     {
         if (snakes.Contains(s))
             snakes.Remove(s);
+
+        if (playerScores.ContainsKey(s))
+            playerScores.Remove(s);
     }
 
     //Returns a read-only snapshot view of current registered snakes.
@@ -76,4 +91,35 @@ public class GameController : MonoBehaviour
     {
         return snakes.AsReadOnly();
     }
+
+
+    public void AddScore(SnakeController snake, bool scoreBoost)
+    {
+        if (!playerScores.ContainsKey (snake)) return;
+
+        int finalScore = foodScore;
+        if (scoreBoost)
+            finalScore *= 2;
+
+
+        playerScores[snake] += finalScore;
+
+        Debug.Log($"{snake.name} score = {playerScores[snake]}");
+    }
+
+
+    public void DeductScore(SnakeController snake)
+    {
+        if (!playerScores.ContainsKey(snake)) return;
+
+        playerScores[snake] = Mathf.Max(0, playerScores[snake] - poisonPenalty);
+
+        Debug.Log($"{snake.name} score = {playerScores[snake]}");
+    }
+
+    public int GetScore(SnakeController snake)
+    {
+        return playerScores.TryGetValue(snake, out int score) ? score : 0;
+    }
+
 }
