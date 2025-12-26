@@ -41,6 +41,7 @@ public class SnakeController : MonoBehaviour
     [Header("References")]
     [SerializeField] private LevelGridController levelGridController; //Handles grid, bounds, and GridToWorld conversion.
     [SerializeField] private GameObject bodySegmentPrefab; //Prefab for body segements.
+    [SerializeField] private GamePlayUIController gamePlayUIController;
 
 
     [Header("Sprites (head handled by rotation onthe head GameObject)")]
@@ -107,10 +108,6 @@ public class SnakeController : MonoBehaviour
         if (bodySegments == null) bodySegments = new List<GameObject>();
     }
 
-    private void OnEnable()
-    {
-
-    }
 
     // Start is called before the first frame update
     void Start()
@@ -633,8 +630,10 @@ public class SnakeController : MonoBehaviour
     private IEnumerator DelayDestruction(float delay)
     {
         yield return new WaitForSeconds(delay);
-        Destroy(gameObject);
+        gameObject.SetActive(false);
         DestroyAllBodySegments();
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     //Get all grid Positions occupied by the snake (head + body)
@@ -730,52 +729,47 @@ public class SnakeController : MonoBehaviour
         }
 
         //Collision with other snakes(Co-Oo). Check all other snakes' occupied cell.
-        if (GameController.instance != null)
+        if (GameController.instance == null) return false;
+
+        var allSnakes = GameController.instance.GetAllSnakes();
+
+        foreach (var other in allSnakes)
         {
-            var all = GameController.instance.GetAllSnakes();
-            foreach (var other in all)
+            if (other == null || other == this) continue;
+
+            List<Vector2Int> otherOccupied = other.GetOccupiedGridPositions();
+            if (otherOccupied.Count == 0) continue;
+
+            Vector2Int otherHeadPos = otherOccupied[0];
+            Debug.Log("Snake:  " + this.gridPosition + "other snake head pos: " + otherOccupied[0]);
+
+            if (otherHeadPos == newHeadPos)
             {
-                if (other == null || other == this) continue;
+                Debug.Log("Head to head collision");
 
-                var otherOcc = other.GetOccupiedGridPositions();
+                GameController.instance.SetHeadToHeadCollision();
 
-                foreach (var p in otherOcc)
+                //Shield consumes and cancels move
+                if (TryConsumeShield())
                 {
-                    //Only treat as collision when their occupied pos matches our head pos
-                    if (p != newHeadPos) continue;
+                    gridPosition = previousHead;
+                    if (levelGridController != null)
+                        transform.position = levelGridController.GridToWorld(gridPosition);
+                    else
+                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
 
-                    Debug.Log($"{name}: Collided with other snake '{other.name}' at {newHeadPos}");
-
-                    //Shield consumes and cancels move
-                    if (TryConsumeShield())
-                    {
-                        gridPosition = previousHead;
-                        if (levelGridController != null)
-                            transform.position = levelGridController.GridToWorld(gridPosition);
-                        else
-                            transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
-
-                        gridMoveDirection = Vector2Int.zero;
-                        nextMoveDirection = Vector2Int.zero;
-                        return true;
-                    }
-
-                    OnCollideWithSnake();
+                    gridMoveDirection = Vector2Int.zero;
+                    nextMoveDirection = Vector2Int.zero;
                     return true;
                 }
+
+                OnCollideWithSnake();
+                return true;
             }
-        }
-        else
-        {
+
             //Fallback: scene query if GameController isn't present
-            var sceneSnakes = FindObjectsOfType<SnakeController>();
-            foreach (var other in sceneSnakes)
-            {
-                if (other == null || other == this) continue;
-                var otherOcc = other.GetOccupiedGridPositions();
-                foreach (var p in otherOcc)
-                {
-                    if (p != newHeadPos) continue;
+            for (int i = 0; i < otherOccupied.Count; i++) {
+                    if (otherOccupied[i] != newHeadPos) continue;
 
                     Debug.Log($"{name}: collided (fallback) with snake '{other.name}' at {newHeadPos}");
 
@@ -791,12 +785,11 @@ public class SnakeController : MonoBehaviour
                         nextMoveDirection = Vector2Int.zero;
                         return true;
                     }
+
                     OnCollideWithSnake();
                     return true;
                 }
             }
-        }
-
         return false; //no collision handled
 
     }
@@ -809,6 +802,7 @@ public class SnakeController : MonoBehaviour
         gridMoveDirection = Vector2Int.zero;
         nextMoveDirection = Vector2Int.zero;
 
+        GameController.instance.UpdateGameLoseState(this, true);
         Die();
     }
     #endregion
@@ -1053,6 +1047,9 @@ public class SnakeController : MonoBehaviour
         if (GameController.instance == null) return;
 
         GameController.instance.AddScore(this, scoreBoostActive);
+
+        if (gamePlayUIController != null) gamePlayUIController.UpdateScore();
+
     }
 
     public void PoisonCollection()
@@ -1060,6 +1057,8 @@ public class SnakeController : MonoBehaviour
         if (GameController.instance == null) return;
 
         GameController.instance.DeductScore(this);
+        if (gamePlayUIController != null) gamePlayUIController.UpdateScore();
+
     }
 
 
@@ -1072,7 +1071,7 @@ public class SnakeController : MonoBehaviour
         foreach (var seg in bodySegments)
         {
             if (seg != null)
-                Destroy(seg);
+                seg.SetActive(false);
         }
 
         bodySegments.Clear();
