@@ -174,6 +174,7 @@ public class LevelGridController : MonoBehaviour
             Debug.LogWarning("LevelGridController.SpawnFood: No Free Cell to spawn Food.");
             if (GameController.instance != null && snakeController != null)
             {
+                SoundManager.Instance.Play(Sounds.Win);
                 GameController.instance.UpdateGameWonState(snakeController, true);
             }
             return;
@@ -595,6 +596,8 @@ public class LevelGridController : MonoBehaviour
             snake.SnakeGrow(snake.GetSnakeBodyGrowSize());
 
             snake.FoodCollection();
+
+            SoundManager.Instance.Play(Sounds.FoodPickUP);
         }
 
 
@@ -606,6 +609,8 @@ public class LevelGridController : MonoBehaviour
             snake.SnakeShrink(snake.GetSnakeBodyShrinkSize());
 
             snake.PoisonCollection();
+
+            SoundManager.Instance.Play(Sounds.PoisonPickUP);
         }
 
 
@@ -620,6 +625,13 @@ public class LevelGridController : MonoBehaviour
 
             // Destroy the power-up and record the collection time for cooldown enforcement.
             DestroyPowerUp(type, true);
+
+            if (type == PowerUpType.ScoreBoost)
+                SoundManager.Instance.Play(Sounds.ScoreBoosterPickUP);
+            if (type == PowerUpType.Shield)
+                SoundManager.Instance.Play(Sounds.ShieldPickUP);
+            if (type == PowerUpType.SpeedUp)
+                SoundManager.Instance.Play(Sounds.SpeedBoosterPickUP);
         }
     }
 

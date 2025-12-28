@@ -9,6 +9,7 @@ using UnityEngine.UI;
 /// - player mode selection
 /// - options menu
 /// - scene loading
+/// - Audio settings via sliders
 /// - quit game
 /// stores the selected game mode 
 /// (single/two - player) for use in gameplay.
@@ -78,6 +79,18 @@ public class MainMenuController : MonoBehaviour
     {
         if (optionMenuPanel != null) optionMenuPanel.SetActive(false);
         if (playerModePanel != null) playerModePanel.SetActive(false);
+
+        SyncSliders();
+    }
+
+    /// <summary>
+    /// Synchronizes option menu sliders with SoundManager values
+    /// Uses SetValueWithoutNotify to avoid feedback loops
+    /// </summary>
+    private void SyncSliders()
+    {
+        if (musicSlider != null) musicSlider.SetValueWithoutNotify(SoundManager.Instance.GetMusicVolume());
+        if (effectSlider != null) effectSlider.SetValueWithoutNotify(SoundManager.Instance.GetEffectVolume());
     }
 
 
@@ -87,6 +100,8 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void ClosePlayerModePopUp()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         playerModePanel.SetActive(false);
         startMenuPanel.SetActive(true);
 
@@ -99,19 +114,25 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void CloseOptionPopUp()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         optionMenuPanel.SetActive(false);
         startMenuPanel.SetActive(true);
     }
 
 
     /// <summary>
-    /// Opens the option menu
-    /// and hides the start menu.
+    /// Opens the option menu and refreshes audio sliders
+    /// Ensure UI reflects the latest saved audio values
     /// </summary>
     private void DirectToOptionMenuPanel()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         optionMenuPanel.SetActive(true);
         startMenuPanel.SetActive(false);
+
+        SyncSliders();
     }
 
     /// <summary>
@@ -120,6 +141,8 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void DirectToPlayerModePanel()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         playerModePanel.SetActive(true);
         startMenuPanel.SetActive(false);
     }
@@ -130,6 +153,8 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void  ChoosePlayerOneControlScheme()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         isTwoPlayerModeOn = false;
         LoadGameScene();
         Cursor.lockState = CursorLockMode.Locked;
@@ -143,6 +168,8 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void ChoosePlayerTwoControlScheme()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         isTwoPlayerModeOn = true;
         LoadGameScene();
         Cursor.lockState= CursorLockMode.Locked;
@@ -166,20 +193,21 @@ public class MainMenuController : MonoBehaviour
     }
 
     /// <summary>
-    /// Called when music volume slider changes.
-    /// (Audio system not implemented yet.)
+    /// Updates music volume when slider value changes
+    /// Delegates actual logic to SoundManager
     /// </summary>
     private void OnMusicVolumeChange(float value)
     {
+        SoundManager.Instance.SetMusicVolume(value);
     }
 
     /// <summary>
-    /// Called when effect volume slider changes.
-    /// (Audio system not implemented yet.)
+    /// Updates sound effect volume when slider value changes
+    /// Delegates actual logic to SoundManager
     /// </summary>
     private void OnEffectVolumeChange(float value)
     {
-
+        SoundManager.Instance.SetEffectVolume(value);
     }
 
     /// <summary>
@@ -187,6 +215,8 @@ public class MainMenuController : MonoBehaviour
     /// </summary>
     private void QuitGame()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
 #if UNITY_EDITOR
         EditorApplication.isPlaying = false;
 #else

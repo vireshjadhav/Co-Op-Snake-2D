@@ -213,7 +213,6 @@ public class GameResultController : MonoBehaviour
         }
     }
 
-    /*============================= Icon Helpers =============================*/
     /// <summary>
     /// Marks player one as winner.
     /// </summary>
@@ -249,7 +248,7 @@ public class GameResultController : MonoBehaviour
         snakeTwoWonIcon.SetActive(false);
         snakeTwoLoseIcon.SetActive(true);
     }
-    /*========================================================================*/
+
     
     /// <summary>
     /// Updates and returns whether the match has ended.
@@ -275,6 +274,8 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     private void LoadMainMenu()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         SceneManager.LoadScene(mainMenuSceneBuildIndex);
     }
 
@@ -283,6 +284,8 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     private void QuitGame()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
