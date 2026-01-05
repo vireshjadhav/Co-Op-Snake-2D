@@ -41,9 +41,10 @@ public class LevelGridController : MonoBehaviour
     [SerializeField] private float cellSize = 1f;
     [SerializeField] private bool isGridCentered = true;  //When true, bottomLeftOrigin is computed so the grid is centered at this GameObject's transform position.
     private Vector3 bottomLeftOrigin;
+    [Tooltip("If true, moving off one edge will make the snake appear on the opposite edge")]
+    [SerializeField] public bool isWrapAround = true; //Enable/disable screen wrap.
 
 
-    
     [Header("Food Setting")]
     [SerializeField] private float foodSpawnInterval = 1f; //Time between attempts to spawn food (if no food currently on grid).
     private Vector2Int foodGridPosition = new Vector2Int(-1, -1); //Tracks runtime state for the currently spawned food instance.
