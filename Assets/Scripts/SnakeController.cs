@@ -1,6 +1,5 @@
-    using System.Collections;
-    using System.Collections.Generic;
-using Unity.VisualScripting;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -73,10 +72,8 @@ public class SnakeController : MonoBehaviour
     //Powr-up state
     private bool shieldActive;
     private float shieldTimer;
-
     private bool scoreBoostActive;
     private float scoreBoostTimer;
-
     private bool speedUpActive;
     private float speedUpTimer;
     private float baseGridMoveMaxTimer;
@@ -97,15 +94,11 @@ public class SnakeController : MonoBehaviour
 
     private float gridMoveTimer = 0f; //Timer to handle movement intervals.
     private bool isAlive = false; //Flag to check whether snake is currently alive or dead.
-
-
     private Vector2Int nextMoveDirection; //requested direction from input (applied on next grid move)
     private Vector2Int gridMoveDirection;  //current move direction (applied every grid step)
-
-
     private float spriteDirectionAngle = 90f;  //Used to store last valid sprite angle for the head.
 
-
+    //Initializes essential components and validates references on object creation
     private void Awake()
     {
         //Initialize list (Safety)
@@ -113,15 +106,46 @@ public class SnakeController : MonoBehaviour
         if (bodySegments == null) bodySegments = new List<GameObject>();
     }
 
+    //Register snake with GameController when this component becomes active
     private void OnEnable()
     {
-        //Register snake to GameController
-        if (GameController.instance != null) GameController.instance.RegisterSnake(this);
+
     }
 
     // Start is called before the first frame update
     void Start()
     {
+        //Register snake to GameController
+        if (GameController.instance != null) GameController.instance.RegisterSnake(this);
+
+
+        if (levelGridController == null)
+        {
+            Debug.LogError($"{name}: LevelGridController not assigned.");
+            enabled = false;
+            return;
+        }
+
+        if (MainMenuController.isTwoPlayerModeOn)
+        {
+            if (controlScheme == ControlScheme.Player_01)
+            {
+                gridPosition = new Vector2Int(3, 10);
+                gridMoveDirection = Vector2Int.right;
+            }
+
+            if (controlScheme == ControlScheme.Player_02)
+            {
+                gridPosition = new Vector2Int(16, 10);
+                gridMoveDirection = Vector2Int.left;
+            }
+        }
+        else
+        {
+            //gridPosition = new Vector2Int(10, 10);
+            gridMoveDirection = defaultStartDirection;
+        }
+
         //Save original speed for SpeedUp revert
         baseGridMoveMaxTimer = gridMoveMaxTimer;
 
@@ -143,8 +167,10 @@ public class SnakeController : MonoBehaviour
         isAlive = true;
 
         // Set starting movement
-        if (startMovingOnAwake) gridMoveDirection = defaultStartDirection; //Auto-start moving
-        else gridMoveDirection = Vector2Int.zero; //Snake will wait for input
+        if (startMovingOnAwake && gridMoveDirection == Vector2Int.zero)
+            gridMoveDirection = defaultStartDirection; //Auto-start moving
+        else
+            gridMoveDirection = Vector2Int.zero; //Snake will wait for input
 
         //Next direction initially matches current direction.
         nextMoveDirection = gridMoveDirection;
@@ -156,8 +182,10 @@ public class SnakeController : MonoBehaviour
         Vector2Int layoutDirection = (gridMoveDirection != Vector2Int.zero) ? gridMoveDirection : (defaultStartDirection != Vector2Int.zero ? defaultStartDirection : Vector2Int.right);
 
         //Position head in world
-        if (levelGridController != null) transform.position = levelGridController.GridToWorld(gridPosition);
-        else transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+        if (levelGridController != null) 
+            transform.position = levelGridController.GridToWorld(gridPosition);
+        else 
+            transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
         //Rotate head
         spriteDirectionAngle = GetAngleFromDirection(layoutDirection);
@@ -217,12 +245,15 @@ public class SnakeController : MonoBehaviour
         HandlePowerUpTimers(); //Update power-up durations
     }
 
+    #region Helper
+
     //Return current grow amount for further features
     public int GetSnakeBodyGrowSize() => snakeBodyGrowSize;
 
     //Return current shrink amount for further features
     public int GetSnakeBodyShrinkSize() => snakeBodyShrinkSize;
 
+    #endregion
 
     #region Input
 
@@ -359,7 +390,7 @@ public class SnakeController : MonoBehaviour
         //Place segments one-by-one behind the head along layoutDirection.
         for (int i = 1; i <= snakeBodySize; i++)
         {
-            Vector2Int segPos = gridPosition - layoutDirection *i;
+            Vector2Int segPos = gridPosition - layoutDirection * i;
 
             if (levelGridController.isWrapAround && levelGridController != null)
             {
@@ -492,7 +523,7 @@ public class SnakeController : MonoBehaviour
             tailHistory.Insert(0, tailBefore);
             if (tailHistory.Count > tailHistoryLimit)
             {
-                tailHistory.RemoveAt(tailHistory.Count -1);
+                tailHistory.RemoveAt(tailHistory.Count - 1);
             }
 
             //Trim extra position so list length matches snakeBodySize
@@ -530,9 +561,9 @@ public class SnakeController : MonoBehaviour
 
             //Use recorded position if available, else fall back to head position
             Vector2Int segGridPos = (i < snakeMovePositionList.Count) ? snakeMovePositionList[i] : gridPosition;
-            
+
             Vector3 world = levelGridController != null ? levelGridController.GridToWorld(segGridPos) : new Vector3(segGridPos.x, segGridPos.y, 0);
-            
+
             bodySegments[i].transform.position = world;
         }
     }
@@ -560,7 +591,7 @@ public class SnakeController : MonoBehaviour
         int y = pos.y;
 
         //Wrap X coordinate
-        if (w > 0 )
+        if (w > 0)
         {
             x = ((x % w) + w) % w;
         }
@@ -767,16 +798,17 @@ public class SnakeController : MonoBehaviour
         }
 
         return false; //no collision handled
-        
+
     }
 
     private void OnCollideWithSnake()
     {
-        if(!isAlive) return;
+        if (!isAlive) return;
+
         isAlive = false;
         gridMoveDirection = Vector2Int.zero;
         nextMoveDirection = Vector2Int.zero;
-        
+
         Die();
     }
     #endregion
@@ -1022,7 +1054,7 @@ public class SnakeController : MonoBehaviour
     /// </summary>
     private void DestroyAllBodySegments()
     {
-        foreach(var seg in bodySegments)
+        foreach (var seg in bodySegments)
         {
             if (seg != null)
                 Destroy(seg);
