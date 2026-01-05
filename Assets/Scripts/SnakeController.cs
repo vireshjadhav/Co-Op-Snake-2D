@@ -44,6 +44,15 @@ public class SnakeController : MonoBehaviour
     [SerializeField] private GamePlayUIController gamePlayUIController;
 
 
+    [Header("Animators")]
+    [Tooltip("Animator for green snake (Player 01)")]
+    [SerializeField] private RuntimeAnimatorController greenSnakeAnimator;
+    [Tooltip("Animator for blue snake (Player 02)")]
+    [SerializeField] private RuntimeAnimatorController blueSnakeAnimator;
+    [SerializeField] private Animator headAnimator;   //Reference to the snake head's Animator Component
+    [SerializeField] private float headHitAnimationDuration = 0.5f;
+
+
     [Header("Sprites (head handled by rotation onthe head GameObject)")]
     [Tooltip("Single straight body sprite (rotate for horizontal/vertical)")]
     [SerializeField] private Sprite bodyStraightSprite;
@@ -69,6 +78,9 @@ public class SnakeController : MonoBehaviour
     [Tooltip("Multiplier for speed up. < 1 = faster snake.")]
     [SerializeField] private float speedUpFactor = 0.5f;
 
+
+    [Header("Visual Effects")]
+    [SerializeField] private DizzyStarsEffect dizzyStarsEffect;
 
     //Powr-up state
     private bool shieldActive;
@@ -143,6 +155,9 @@ public class SnakeController : MonoBehaviour
             gridMoveDirection = defaultStartDirection;
         }
 
+        //Initialize animator 
+        InitializeAnimator();
+
         //Save original speed for SpeedUp revert
         baseGridMoveMaxTimer = gridMoveMaxTimer;
 
@@ -179,16 +194,16 @@ public class SnakeController : MonoBehaviour
         Vector2Int layoutDirection = (gridMoveDirection != Vector2Int.zero) ? gridMoveDirection : (defaultStartDirection != Vector2Int.zero ? defaultStartDirection : Vector2Int.right);
 
         //Position head in world
-        if (levelGridController != null) 
+        if (levelGridController != null)
             transform.position = levelGridController.GridToWorld(gridPosition);
-        else 
+        else
             transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
         //Rotate head
         spriteDirectionAngle = GetAngleFromDirection(layoutDirection);
         transform.eulerAngles = new Vector3(0f, 0f, spriteDirectionAngle);
 
-        //Build initial body grid positions
+        //Build initial body layout
         BuildInitialBodyLayout(layoutDirection);
 
         //Spawn visual body segments
@@ -227,7 +242,7 @@ public class SnakeController : MonoBehaviour
             {
                 Debug.Log($"{name}: Initial snake layout is outside the grid. " +
                     "Check gridPosition, snakeBodySize, defaultStartDirection or enable wrapAround.");
-                OnHitWall();
+                OnFatalObstacleHit();
                 return;
             }
         }
@@ -236,6 +251,9 @@ public class SnakeController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        //Check if game is over before processing anything
+        if (GameController.instance != null && GameController.instance.IsGameOver) return;
+
         if (!isAlive) return; //freeze input when dead
         HandleInput();  //Read player input
         HandleGridMovement(); //Move snake on grid-based timer
@@ -257,7 +275,25 @@ public class SnakeController : MonoBehaviour
     //Read input and set nextDirection (buffered). Do not directly override gridMoveDirection here.
     private void HandleInput()
     {
-        if (controlScheme == ControlScheme.Player_01)
+
+        bool allowWASD = false;
+        bool allowArrows = false;
+
+        if (MainMenuController.isTwoPlayerModeOn)
+        {
+            if (controlScheme == ControlScheme.Player_01)
+                allowWASD = true;
+            if (controlScheme == ControlScheme.Player_02)
+                allowArrows = true;
+        }
+        else
+        {
+
+            allowWASD = true;
+            allowArrows = true;
+        }
+
+        if (allowWASD)
         {
             if (Input.GetKeyDown(KeyCode.W)) TrySetDirection(new Vector2Int(0, 1));
             if (Input.GetKeyDown(KeyCode.A)) TrySetDirection(new Vector2Int(-1, 0));
@@ -265,13 +301,21 @@ public class SnakeController : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.D)) TrySetDirection(new Vector2Int(1, 0));
         }
 
-        if (controlScheme == ControlScheme.Player_02)
+        if (allowArrows)
         {
             if (Input.GetKeyDown(KeyCode.UpArrow)) TrySetDirection(new Vector2Int(0, 1));
             if (Input.GetKeyDown(KeyCode.LeftArrow)) TrySetDirection(new Vector2Int(-1, 0));
             if (Input.GetKeyDown(KeyCode.DownArrow)) TrySetDirection(new Vector2Int(0, -1));
             if (Input.GetKeyDown(KeyCode.RightArrow)) TrySetDirection(new Vector2Int(1, 0));
         }
+
+
+        if (gridMoveDirection == Vector2Int.zero && nextMoveDirection != Vector2Int.zero)
+        {
+            //We are about to start moving from a stopped state, pre update the sprite for the new direction
+            UpdateBodySprite();
+        }
+        
     }
 
     //Prevent 180° turn and buffer direction
@@ -363,11 +407,31 @@ public class SnakeController : MonoBehaviour
     //Use and remove shield once, returns true if shield consumed and the hit should be ignored.
     private bool TryConsumeShield()
     {
+        //Always trigger hit Animation on collission, regartless of Shiedl status
+        TriggerHeadHitAnimation();
+
+
+        // Play shield hit sound
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.Play(Sounds.ShieldBlock);
+        }
+
         if (!shieldActive) return false;
 
         shieldActive = false;
         shieldTimer = 0f;
         Debug.Log($"{name} shield consumed!");
+
+        //Reset head to head collision flag when shield prevents death
+        if (GameController.instance != null && GameController.instance.IsHeadToHeadCollision())
+        {
+            GameController.instance.ResetHeadToHeadCollision();
+            Debug.Log($"Reset head to head collision flag after shield consumption");
+        }
+
+        //This ensures sprites are Properly oriented after Collision
+        UpdateBodySprite();
         return true;
     }
 
@@ -456,32 +520,33 @@ public class SnakeController : MonoBehaviour
             gridPosition += gridMoveDirection;
             Vector2Int newPos = WrapPosition(gridPosition);
 
-            //if wrapArround is disabled and we go out of bounds, trigger wall hit/death
+            //if wrapArround is disabled and we go out of bounds, trigger fatal obstacle hit
             if (!levelGridController.isWrapAround && levelGridController != null && !levelGridController.IsInsideGrid(gridPosition))
             {
+                //Trigger hit animation for wall collision
+                TriggerHeadHitAnimation();
+
+                //ALWAYS trigger dizzy stars effect on collision
+                TriggerDizzyEffect();
+
+                //Cancel this move: stay on previous cell
+                gridPosition = previousHead;
+
+                transform.position = levelGridController.GridToWorld(gridPosition);
+
                 //Try shield first
                 if (TryConsumeShield())
                 {
-                    //Cancel this move: stay on previous cell
-                    gridPosition = previousHead;
-
-                    if (levelGridController != null)
-                    {
-                        transform.position = levelGridController.GridToWorld(gridPosition);
-                    }
-                    else
-                    {
-                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
-                    }
                     //Stop current movement, player can choose a new direction
                     gridMoveDirection = Vector2Int.zero;
                     nextMoveDirection = Vector2Int.zero;
                     return;
                 }
-                // Stop movement and trigger wall hit
+                // Stop movement and trigger fatal obstacle hit
                 gridMoveDirection = Vector2Int.zero;
                 nextMoveDirection = Vector2Int.zero;
-                OnHitWall();
+                OnFatalObstacleHit();
+                return;
             }
 
             gridPosition = newPos;  //ensure internal position matches final applied position
@@ -491,13 +556,14 @@ public class SnakeController : MonoBehaviour
             else
                 transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
-            snakeMovePositionList.Insert(0, previousHead);
-
             bool collisionHandled = HandleSelfAndSnakeCollisions(gridPosition, previousHead, tailBefore);
             if (collisionHandled)
             {
                 return;
             }
+
+            //Insert previous head position as first body segment position.
+            snakeMovePositionList.Insert(0, previousHead);
 
             //Move Head in world space
             if (levelGridController != null)
@@ -505,8 +571,6 @@ public class SnakeController : MonoBehaviour
             else
                 transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
-            ////Insert previous head position as first body segment position.
-            //snakeMovePositionList.Insert(0, previousHead);
 
             //If list is shorter than body size, extend using old tail position
             while (snakeMovePositionList.Count < snakeBodySize)
@@ -607,15 +671,16 @@ public class SnakeController : MonoBehaviour
 
     #region Death / Collisions
 
-    //Called when snake hit a wall (after shield already failed / not present)
-    private void OnHitWall()
+    //Called when snake hits a fatal obstacle (wall or another snake)
+    private void OnFatalObstacleHit()
     {
         if (!isAlive) return;
-        isAlive = false;
-        gridMoveDirection = Vector2Int.zero;
-        nextMoveDirection = Vector2Int.zero;
 
-        //Run die Animation /sound.
+        // Play death sound
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.Play(Sounds.PlayerDeath);
+        }
 
         Die();
     }
@@ -623,6 +688,23 @@ public class SnakeController : MonoBehaviour
     //Start death Process (delayed destruction)
     private void Die()
     {
+        if (!isAlive) return; //Prevent multiple death calls
+
+        isAlive = false;
+        gridMoveDirection = Vector2Int.zero;
+        nextMoveDirection = Vector2Int.zero;
+
+        //Play death sound
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.Play(Sounds.PlayerDeath);
+        }
+
+        if (GameController.instance != null)
+        {
+            GameController.instance.UpdateGameLoseState(this, true);
+        }
+
         StartCoroutine(DelayDestruction(2f));
     }
 
@@ -630,10 +712,23 @@ public class SnakeController : MonoBehaviour
     private IEnumerator DelayDestruction(float delay)
     {
         yield return new WaitForSeconds(delay);
+
+        //Ensure snake is completely stopped
+        StopSnake();
+
         gameObject.SetActive(false);
         DestroyAllBodySegments();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    public void StopSnake()
+    {
+        isAlive = false;
+        gridMoveDirection = Vector2Int.zero;
+        nextMoveDirection = Vector2Int.zero;
+
+        StopAllCoroutines();
     }
 
     //Get all grid Positions occupied by the snake (head + body)
@@ -696,6 +791,7 @@ public class SnakeController : MonoBehaviour
     //Returns true if collision was handled (move cancelled or snake died) and caller should stop processing the move.
     private bool HandleSelfAndSnakeCollisions(Vector2Int newHeadPos, Vector2Int previousHead, Vector2Int tailBefore)
     {
+
         //Self-collision: check own body
         int checkCount = Mathf.Min(snakeMovePositionList.Count, snakeBodySize);
         for (int i = 0; i < checkCount; i++)
@@ -709,28 +805,40 @@ public class SnakeController : MonoBehaviour
             {
                 Debug.Log($"{name}: Self-collision at {newHeadPos}");
 
-                SoundManager.Instance.Play(Sounds.PlayerDeath);
+                //Trigger hit animation for any collision
+                TriggerHeadHitAnimation();
 
-                //If shiedl available, consume it and cancel the move(revert to previousHead).
+                //Always trigger dizzy stats effect on collision
+                TriggerDizzyEffect();
+
+                //Cancel this move: stay on previous cell
+                gridPosition = previousHead;
+                if (levelGridController != null)
+                    transform.position = levelGridController.GridToWorld(gridPosition);
+                else
+                    transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+
+                //If shield available, consume it and cancel the move
                 if (TryConsumeShield())
                 {
-                    gridPosition = previousHead;
-                    if (levelGridController != null)
-                        transform.position = levelGridController.GridToWorld(gridPosition);
-                    else
-                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+                    Debug.Log($"Shield consumed successfully, cancelling move");
 
+                    //Stop current movement, player can choose a new direction
                     gridMoveDirection = Vector2Int.zero;
                     nextMoveDirection = Vector2Int.zero;
+
                     return true;
                 }
 
-                OnCollideWithSnake();  //No shield - die.
+                //Stop movement and trigger fatal obstacle hit
+                gridMoveDirection = Vector2Int.zero;
+                nextMoveDirection = Vector2Int.zero;
+                OnFatalObstacleHit();  //No shield - fatal obstacle hit
                 return true;
             }
         }
 
-        //Collision with other snakes(Co-Oo). Check all other snakes' occupied cell.
+        //Collision with other snakes(Co-Op). Check all other snakes' occupied cell.
         if (GameController.instance == null) return false;
 
         var allSnakes = GameController.instance.GetAllSnakes();
@@ -749,25 +857,58 @@ public class SnakeController : MonoBehaviour
             {
                 Debug.Log("Head to head collision");
 
+                //Trigger hit animation for head to head collision
+                TriggerHeadHitAnimation();
+
+                //Always trigger dizzy stats effect on collision
+                TriggerDizzyEffect();
+
+                if (other != null)
+                {
+                    other.TriggerHeadHitAnimation();
+                    other.TriggerDizzyEffect();
+                }
+
                 GameController.instance.SetHeadToHeadCollision();
 
-                SoundManager.Instance.Play(Sounds.PlayerDeath);
+                //Cancel this move: stay on previous cell
+                gridPosition = previousHead;
+                if (levelGridController != null)
+                    transform.position = levelGridController.GridToWorld(gridPosition);
+                else
+                    transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
                 //Shield consumes and cancels move
                 if (TryConsumeShield())
                 {
-                    gridPosition = previousHead;
-                    if (levelGridController != null)
-                        transform.position = levelGridController.GridToWorld(gridPosition);
-                    else
-                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0);
+                    Debug.Log($"Shield consumed successfully, cancelling move");
 
+                    //Other snake should die as this snake has shield
+                    if(GameController.instance != null && other != null)
+                    {
+                        GameController.instance.UpdateGameLoseState(other, true);
+                    }
+
+                    //Stop current movement, player can choose a new direction
                     gridMoveDirection = Vector2Int.zero;
                     nextMoveDirection = Vector2Int.zero;
                     return true;
                 }
 
-                OnCollideWithSnake();
+                //Stop movement and trigger fatal obstacle hit
+                gridMoveDirection = Vector2Int.zero;
+                nextMoveDirection = Vector2Int.zero;
+
+                //Use gamecontroller to handle head to head collision
+                if (GameController.instance != null)
+                {
+                    GameController.instance.HandleHeadToHeadCollision(this, other);
+                }
+                else
+                {
+                    //Fallback
+                    OnFatalObstacleHit();
+                }
                 return true;
             }
 
@@ -778,39 +919,39 @@ public class SnakeController : MonoBehaviour
 
                 Debug.Log($"{name}: collided (fallback) with snake '{other.name}' at {newHeadPos}");
 
-                SoundManager.Instance.Play(Sounds.PlayerDeath);
+                //Trigger hit animation
+                TriggerHeadHitAnimation();
+
+                //Always trigger dizzy stats effect on collision
+                TriggerDizzyEffect();
+
+                //Cancel this move: stay on previous cell
+                gridPosition = previousHead;
+                if (levelGridController != null)
+                    transform.position = levelGridController.GridToWorld(gridPosition);
+                else
+                    transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
                 if (TryConsumeShield())
                 {
-                    gridPosition = previousHead;
-                    if (levelGridController != null)
-                        transform.position = levelGridController.GridToWorld(gridPosition);
-                    else
-                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+                    Debug.Log($"Shield consumed successfully, cancelling move");
 
+                    //Stop current movement, player can choose a new direction
                     gridMoveDirection = Vector2Int.zero;
                     nextMoveDirection = Vector2Int.zero;
                     return true;
                 }
 
-                OnCollideWithSnake();
+                //Stop movement and trigger fatal obstacle hit
+                gridMoveDirection = Vector2Int.zero;
+                nextMoveDirection = Vector2Int.zero;
+                OnFatalObstacleHit();
                 return true;
             }
         }
         return false; //no collision handled
     }
 
-    private void OnCollideWithSnake()
-    {
-        if (!isAlive) return;
-
-        isAlive = false;
-        gridMoveDirection = Vector2Int.zero;
-        nextMoveDirection = Vector2Int.zero;
-
-        GameController.instance.UpdateGameLoseState(this, true);
-        Die();
-    }
     #endregion
 
     #region Grow / Shrink / Sprites
@@ -924,6 +1065,15 @@ public class SnakeController : MonoBehaviour
     /// </summary>
     private void UpdateBodySprite()
     {
+
+        //Determine which direction to use calculations
+        Vector2Int effctiveMoveDirection = gridMoveDirection;
+        if (effctiveMoveDirection == Vector2Int.zero && nextMoveDirection != Vector2Int.zero)
+        {
+            //If we're stopped but have a queued direction, use that for sprite orientation
+            effctiveMoveDirection = nextMoveDirection;
+        }
+
         for (int i = 0; i < bodySegments.Count; i++)
         {
             if (bodySegments[i] == null) continue;
@@ -964,6 +1114,12 @@ public class SnakeController : MonoBehaviour
                     tailDir = DirectionFromTo(currentPos, gridPosition);
                 }
 
+                //If tailDir is zero(when stopped), use opposite of head movement direction
+                if (tailDir == Vector2Int.zero && gridMoveDirection != Vector2Int.zero)
+                {
+                    tailDir = -effctiveMoveDirection;
+                }
+
                 float angle = 0f;
 
                 if (tailDir == Vector2Int.up) angle = 90f;
@@ -998,6 +1154,17 @@ public class SnakeController : MonoBehaviour
 
             //Outgoing direction: from this segment towards tail
             Vector2Int outgoing = DirectionFromTo(currentPos, posFurtherFromHead);
+
+            if (incoming == Vector2Int.zero && i >0)
+            {
+                //When stopped, incoming direction should be from current to head
+                incoming = DirectionFromTo(currentPos, gridPosition);
+            }
+
+            if (outgoing == Vector2Int.zero && i < bodySegments.Count -1)
+            {
+                outgoing = DirectionFromTo(currentPos, snakeMovePositionList[snakeMovePositionList.Count - 1]);
+            }
 
             //If incoming and outgoing points opposite, it's straight peice
             if (incoming == -outgoing)
@@ -1041,7 +1208,21 @@ public class SnakeController : MonoBehaviour
                 {
                     //Fallback to straight sprite if corner doesn't match any pattern.
                     sr.sprite = bodyStraightSprite;
-                    seg.transform.eulerAngles = Vector3.zero;
+                    if (incoming != Vector2Int.zero)
+                    {
+                        if (incoming.x != 0)
+                        {
+                            seg.transform.eulerAngles = new Vector3(0, 0, 90f);
+                        }
+                        else
+                        {
+                            seg.transform.eulerAngles = Vector3.zero;
+                        }
+                    }
+                    else
+                    {
+                        seg.transform.eulerAngles = new Vector3(0, 0, 90f);
+                    }
                 }
 
             }
@@ -1087,6 +1268,128 @@ public class SnakeController : MonoBehaviour
 
     #endregion
 
+    #region Particle System
+
+    /// <summary>
+    /// Triggers the dizzy stars effect when snake collides with anything
+    /// </summary>
+    private void TriggerDizzyEffect()
+    {
+        if (dizzyStarsEffect != null)
+        {
+            Debug.Log($"{name}: Starting dizzy stars effect on collision");
+            dizzyStarsEffect.StartEffect(transform); 
+        }
+        else
+        {
+            Debug.Log($"{name}: dizzyStarsEffect is NULL!");
+        }
+    }
+
+    #endregion
+
+    #region Animator
+
+    /// <summary>
+    /// Initialize the appropriate animator based on control scheme
+    /// </summary>
+    private void InitializeAnimator()
+    {
+        //Try to get the animator component if not already assigned
+        if (headAnimator == null)
+        {
+            headAnimator = GetComponent<Animator>();
+            if (headAnimator == null)
+            {
+                //Try to find it in the children in not on this GameObject
+                headAnimator = GetComponentInChildren<Animator>();
+            }
+        }
+
+        if (headAnimator != null)
+        {
+            //Assign the appropriate animator controller based on control scheme
+            if (controlScheme == ControlScheme.Player_01 && greenSnakeAnimator != null)
+            {
+                headAnimator.runtimeAnimatorController = greenSnakeAnimator;
+                Debug.Log($"${name}: Assigned Green Snake Animator");
+            }
+            else if (controlScheme == ControlScheme.Player_02 && blueSnakeAnimator != null)
+            {
+                headAnimator.runtimeAnimatorController = blueSnakeAnimator;
+                Debug.Log($"${name}: Assigned Blue Snake Animator");
+            }
+            else
+            {
+                Debug.LogWarning($"${name}: Missing animator controller for {controlScheme}");
+            }
+
+
+            //Debut: Print all states are availablel
+            Debug.Log($"Animator Controller assigned: {headAnimator.runtimeAnimatorController.name}");
+            Debug.Log($"Layer count: {headAnimator.layerCount}");
+
+            // Get all state names (this requires reflection or checking manually)
+            // For now, just check what state we start in
+            var stateInfo = headAnimator.GetCurrentAnimatorStateInfo(0);
+            Debug.Log($"Starting state hash: {stateInfo.fullPathHash}");
+
+            // Common state names to try
+            string[] possibleIdleNames = { "Idle", "SnakeIdle", "GreenSnakeIdle", "BlueSnakeIdle", "Base Layer" };
+            foreach (var name in possibleIdleNames)
+            {
+                if (stateInfo.IsName(name))
+                {
+                    Debug.Log($"Starting state is: {name}");
+                    break;
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"{name}: No Animator component found on snake head");
+        }
+
+
+    }
+
+    /// <summary>
+    /// Triggers the head hit animation
+    /// </summary>
+    public void TriggerHeadHitAnimation()
+    {
+        if (headAnimator != null && headAnimator.isActiveAndEnabled)
+        {
+            headAnimator.SetTrigger("HeadHit");
+            Debug.Log($"{name}: Triggered Head Hit animation");
+
+
+            StartCoroutine(ReturnToIdleAfterDelay(headHitAnimationDuration));
+        }
+        else
+        {
+            Debug.LogWarning($"{name}: No Animator found or animator is disabled");
+        }
+    }
+
+
+    /// <summary>
+    /// Returns to idle state 
+    /// </summary>
+    private IEnumerator ReturnToIdleAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (headAnimator != null && headAnimator.isActiveAndEnabled)
+        {
+            headAnimator.ResetTrigger("HeadHit");
+            headAnimator.SetTrigger("Idle");
+            Debug.Log($"{name}:  Resetting HeadHit trigger - letting state machine handle transition");
+        }
+    }
+
+    #endregion
+
     private void OnDisable()
     {
         //Unregister from GameController when this snake is disabled.
@@ -1096,3 +1399,4 @@ public class SnakeController : MonoBehaviour
         }
     }
 }
+

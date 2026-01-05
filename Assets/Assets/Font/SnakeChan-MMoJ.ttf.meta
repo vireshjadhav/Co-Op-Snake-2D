@@ -1,0 +1,22 @@
+fileFormatVersion: 2
+guid: 58eb6810ce5aef34b8cd0482a3045b08
+TrueTypeFontImporter:
+  externalObjects: {}
+  serializedVersion: 4
+  fontSize: 16
+  forceTextureCase: -2
+  characterSpacing: 0
+  characterPadding: 1
+  includeFontData: 1
+  fontNames:
+  - Snake Chan
+  fallbackFontReferences:
+  - {fileID: 12800000, guid: 01bda4c7f3384f44e8f31610fcb4d506, type: 3}
+  customCharacters: 
+  fontRenderingMode: 0
+  ascentCalculationMode: 1
+  useLegacyBoundsCalculation: 0
+  shouldRoundAdvanceValue: 1
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
