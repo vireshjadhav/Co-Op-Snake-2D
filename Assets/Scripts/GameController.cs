@@ -12,13 +12,20 @@ public class GameController : MonoBehaviour
     [SerializeField] private GameObject snakePlayer02;
 
 
+    [Header("Grid Image")]
+    [SerializeField] private GameObject levelGrid20X20; 
+
     [Header("Score")]
     [SerializeField] private int foodScore = 10;
     [SerializeField] private int poisonPenalty = 5;
+    [SerializeField] private int winPoints = 1000;
 
-
+    private Dictionary<SnakeController, bool> playerWonState = new(); 
+    private Dictionary<SnakeController, bool> playerLoseState = new();
     private Dictionary<SnakeController, int> playerScores = new Dictionary<SnakeController, int>();
 
+
+    private bool headToHeadCollision =false;
 
     //Singleton instance
     public static GameController instance { get; private set; }
@@ -46,7 +53,6 @@ public class GameController : MonoBehaviour
         ApplyGameMode();
     }
 
-
     //Activate/deactivates snake GameObjects based on selected game mode
     private void ApplyGameMode()
     {
@@ -73,6 +79,12 @@ public class GameController : MonoBehaviour
         if (!playerScores.ContainsKey(s))
             playerScores[s] = 0;
 
+        if (!playerWonState.ContainsKey(s))
+            playerWonState[s] = false;
+
+        if (!playerLoseState.ContainsKey(s))
+            playerLoseState[s] = false;
+
         Debug.Log($"{s.name} Register");
     }
 
@@ -84,6 +96,7 @@ public class GameController : MonoBehaviour
 
         if (playerScores.ContainsKey(s))
             playerScores.Remove(s);
+
     }
 
     //Returns a read-only snapshot view of current registered snakes.
@@ -92,6 +105,41 @@ public class GameController : MonoBehaviour
         return snakes.AsReadOnly();
     }
 
+    public void UpdateGameWonState(SnakeController snake, bool state)
+    {
+        if (state)
+            playerWonState[snake] = true;
+        else
+            playerWonState[snake] = false;
+    }
+
+    public void SetHeadToHeadCollision()
+    {
+        headToHeadCollision = true;
+    }
+
+    public bool IsHeadToHeadCollision()
+    {
+        return headToHeadCollision;
+    }
+
+    public bool GetPlayerGameWonState(SnakeController snake )
+    {
+        return playerWonState.TryGetValue(snake, out var state) ? state : false;
+    }
+
+    public void UpdateGameLoseState(SnakeController snake, bool state)
+    {
+        if (state)
+            playerLoseState[snake] = true;
+        else 
+            playerLoseState[snake] = false;
+    }
+
+    public bool GetPlayerGameLoseState(SnakeController snake)
+    {
+        return playerLoseState.TryGetValue(snake, out var state) ? state : false;
+    }
 
     public void AddScore(SnakeController snake, bool scoreBoost)
     {
@@ -104,7 +152,10 @@ public class GameController : MonoBehaviour
 
         playerScores[snake] += finalScore;
 
-        Debug.Log($"{snake.name} score = {playerScores[snake]}");
+        if (playerScores[snake] >= winPoints)
+        {
+            UpdateGameWonState(snake, true);
+        }
     }
 
 
@@ -113,8 +164,6 @@ public class GameController : MonoBehaviour
         if (!playerScores.ContainsKey(snake)) return;
 
         playerScores[snake] = Mathf.Max(0, playerScores[snake] - poisonPenalty);
-
-        Debug.Log($"{snake.name} score = {playerScores[snake]}");
     }
 
     public int GetScore(SnakeController snake)

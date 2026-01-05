@@ -87,7 +87,6 @@ public class LevelGridController : MonoBehaviour
     private float powerUpSpawnTimer = 0f;
     private float powerUpNextSpawnTime = 0f;
 
-
     private void Awake()
     {
         //If isGreedCentered is true, the GameObject transform position is treated as the grid center.
@@ -173,7 +172,18 @@ public class LevelGridController : MonoBehaviour
         if (spawnFoodCell.x < 0)
         {
             Debug.LogWarning("LevelGridController.SpawnFood: No Free Cell to spawn Food.");
+            if (GameController.instance != null && snakeController != null)
+            {
+                GameController.instance.UpdateGameWonState(snakeController, true);
+            }
             return;
+        }
+        else
+        {
+            if (GameController.instance != null && snakeController != null)
+            {
+                GameController.instance.UpdateGameWonState(snakeController, false);
+            }
         }
 
         if (foodObject != null)
