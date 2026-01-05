@@ -583,6 +583,8 @@ public class LevelGridController : MonoBehaviour
             DestroyFood();
 
             snake.SnakeGrow(snake.GetSnakeBodyGrowSize());
+
+            snake.FoodCollection();
         }
 
 
@@ -592,6 +594,8 @@ public class LevelGridController : MonoBehaviour
             DestroyPoison();
 
             snake.SnakeShrink(snake.GetSnakeBodyShrinkSize());
+
+            snake.PoisonCollection();
         }
 
 

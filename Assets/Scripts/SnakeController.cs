@@ -98,6 +98,7 @@ public class SnakeController : MonoBehaviour
     private Vector2Int gridMoveDirection;  //current move direction (applied every grid step)
     private float spriteDirectionAngle = 90f;  //Used to store last valid sprite angle for the head.
 
+
     //Initializes essential components and validates references on object creation
     private void Awake()
     {
@@ -106,7 +107,6 @@ public class SnakeController : MonoBehaviour
         if (bodySegments == null) bodySegments = new List<GameObject>();
     }
 
-    //Register snake with GameController when this component becomes active
     private void OnEnable()
     {
 
@@ -1047,6 +1047,21 @@ public class SnakeController : MonoBehaviour
             }
         }
     }
+
+    public void FoodCollection()
+    {
+        if (GameController.instance == null) return;
+
+        GameController.instance.AddScore(this, scoreBoostActive);
+    }
+
+    public void PoisonCollection()
+    {
+        if (GameController.instance == null) return;
+
+        GameController.instance.DeductScore(this);
+    }
+
 
     /// <summary>
     /// Destroys all visual body segments and clears internal position lists.
