@@ -1,5 +1,8 @@
+using System.Collections;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -12,12 +15,9 @@ using UnityEngine.UI;
 /// </summary>
 public class GameResultController : MonoBehaviour
 {
-    //Buttons shown on result UI(Single and dual layouts)
-    [Header("GameResultMenu")]
-    public Button mainMenuButton;
-    public Button quitButton;
-    public Button mainMenuButton_2;
-    public Button quitButton_2;
+    [Header("Canvas Settings")]
+    [SerializeField] private Canvas resultCanvas;
+    [SerializeField] private GraphicRaycaster graphicRaycaster;
 
     //Panels used to show results
     [Header("Panels")]
@@ -26,44 +26,40 @@ public class GameResultController : MonoBehaviour
     [SerializeField] private GameObject gameResultUIPanel;
 
 
+    //Single Player Result UI
+    [Header("Single Player UI")]
+    [SerializeField] private Button singlePlayerMainMenuButton;
+    [SerializeField] private Button singlePlayerQuitButton;
+    [SerializeField] private TextMeshProUGUI singlePlayerScoreText;
+    [SerializeField] private GameObject singlePlayerWonIcon;
+    [SerializeField] private GameObject singlePlayerLoseIcon;
+
+    //Two player Result UI
+    [Header("Two Player UI")]
+    [SerializeField] private Button twoPlayerMainMenuButton;
+    [SerializeField] private Button twoPlayerQuitButton;
+    [SerializeField] private TextMeshProUGUI player01ScoreText;
+    [SerializeField] private TextMeshProUGUI player02ScoreText;
+    [SerializeField] private GameObject player01WinIcon;
+    [SerializeField] private GameObject player01LoseIcon;
+    [SerializeField] private GameObject player02WinIcon;
+    [SerializeField] private GameObject player02LoseIcon;
+
+
     //Snake references used to fetch score and win/lose state
     [Header("Reference")]
     [SerializeField] private SnakeController snakeController_01;
     [SerializeField] private SnakeController snakeController_02;
 
 
-    //Score text references (for both layouts)
-    [Header("Score Text")]
-    [SerializeField] private TextMeshProUGUI playerOneScore_01;
-    [SerializeField] private TextMeshProUGUI playerOneScore_02;
-    [SerializeField] private TextMeshProUGUI playerTwoScore;
-    
+    [Header("Settings")]
+    [SerializeField] private int mainMenuSceneBuildIndex = 0;    //Build index for main menu scene
+    [SerializeField] private float resultDelay = 1f;
+
     //Cached scores pulled from GameController
-    private int player01_Score = 0;
-    private int player02_Score = 0;
-
-    [Header("Game Object Reference")]
-    //Single-player icons
-    [SerializeField] private GameObject player01_WonIcon;
-    [SerializeField] private GameObject player01_LoseIcon;
-    //Two-player snake result icons
-    [SerializeField] private GameObject snakeOneWonIcon;
-    [SerializeField] private GameObject snakeOneLoseIcon;
-    [SerializeField] private GameObject snakeTwoWonIcon;
-    [SerializeField] private GameObject snakeTwoLoseIcon;
-
-    //Build index for main menu scene
-    private int mainMenuSceneBuildIndex = 0;
-    //Prevents result UI from opening multiple times
-    private bool resultShown = false;
-
-
-    //Cached win/Lose state for logic clarity
-    [Header("Game Won or Lose")]
-    private bool isPlayerOneWon = false;
-    private bool isPlayerTwoWon = false;
-    private bool isPlayerOneLose = false;
-    private bool isPlayerTwoLose = false;
+    private int player01Score = 0;
+    private int player02Score = 0;
+    private bool resultShown = false;   //Prevents result UI from opening multiple times
 
 
     /// <summary>
@@ -71,10 +67,22 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     private void Awake()
     {
-        if (mainMenuButton != null) mainMenuButton.onClick.AddListener(LoadMainMenu);
-        if (mainMenuButton_2 != null) mainMenuButton_2.onClick.AddListener(LoadMainMenu);
-        if (quitButton != null) quitButton.onClick.AddListener(QuitGame);
-        if (quitButton_2 != null) quitButton_2.onClick.AddListener(QuitGame);
+        if (resultCanvas == null) resultCanvas = GetComponent<Canvas>();  //Initialize canvas components
+
+        if (graphicRaycaster == null) graphicRaycaster = GetComponent<GraphicRaycaster>(); //Initialize GraphicRaycaster
+
+        if (resultCanvas != null)
+        {
+            resultCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            resultCanvas.sortingOrder = 100; //High order to be on top
+        }
+
+
+        //Set up button listners
+        if (singlePlayerMainMenuButton != null) singlePlayerMainMenuButton.onClick.AddListener(LoadMainMenu);
+        if (twoPlayerMainMenuButton != null) twoPlayerMainMenuButton.onClick.AddListener(LoadMainMenu);
+        if (singlePlayerQuitButton != null) singlePlayerQuitButton.onClick.AddListener(QuitGame);
+        if (twoPlayerQuitButton != null) twoPlayerQuitButton.onClick.AddListener(QuitGame);
     }
 
 
@@ -83,7 +91,10 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     private void Start()
     {
+        //Hide all panels initially
         gameResultUIPanel.SetActive(false);
+        onePlayerResultPanel.SetActive(false);
+        twoPlayerResultPanel.SetActive(false);
     }
 
     /// <summary>
@@ -92,181 +103,280 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     void Update()
     {
-        if(resultShown || !IsGameOver()) return;
+        if (resultShown || !IsGameOver()) return;
 
         resultShown = true;
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        StartCoroutine(OpenResultPanelWithDelay(resultDelay));
+    }
+
+
+
+    IEnumerator OpenResultPanelWithDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
         ShowResult();
     }
 
     /// <summary>
     /// Entry point for showing result UI.
     /// </summary>
-    private void ShowResult()
+    public void ShowResult()
     {
-        gameResultUIPanel.SetActive(true);
+        //Get score first
         GetSnakesScore();
-        SetActivateResultPanel();
-        FinalScore();
-        ChoseGameWonIconOrLose();
-    }
 
+        //Enable cursor
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
 
-    /// <summary>
-    /// Enables correct result panel based on game mode.
-    /// </summary>
-    private void SetActivateResultPanel()
-    {
+        //Activate the main panel
+        gameResultUIPanel.SetActive(true);
+
         if (MainMenuController.isTwoPlayerModeOn)
         {
-            if (onePlayerResultPanel != null) onePlayerResultPanel.SetActive(false);
-            if (twoPlayerResultPanel != null) twoPlayerResultPanel.SetActive(true);
+            SetUpTwoPlayerPanel();
         }
         else
         {
-            if (onePlayerResultPanel != null) onePlayerResultPanel.SetActive(true);
-            if (twoPlayerResultPanel != null) twoPlayerResultPanel.SetActive(false);
+            SetUpSinglePlayerPanel();
         }
+
+        //Ensure buttons are interactable
+        EnsureButtonsWork();
     }
 
 
     /// <summary>
-    /// Fetches final scores from GameController. 
+    /// Enables Single Player Result Panel And The Respective Icons
     /// </summary>
+    private void SetUpSinglePlayerPanel()
+    {
+        twoPlayerResultPanel.SetActive(false); //Hide two player panel
+
+        onePlayerResultPanel.SetActive(true);   //Show and setup single player panel
+
+        singlePlayerScoreText.text = player01Score.ToString();    //Update score
+
+        //Determin win/lose state
+        bool isPlayerWon = GameController.instance.GetPlayerGameWonState(snakeController_01);
+        bool isPlayerLose = GameController.instance.GetPlayerGameLoseState(snakeController_01);
+
+        //Show appropriate icons
+        if (singlePlayerWonIcon != null) singlePlayerWonIcon.SetActive(isPlayerWon);
+        if (singlePlayerLoseIcon != null) singlePlayerLoseIcon.SetActive(isPlayerLose);
+
+        //Disable other panel's buttons to prevent overlap issue
+        DisableTwoPlayerButtons();
+        EnableSinglePlayerButtons();
+    }
+
+
+    /// <summary>
+    /// Enables Single Player Result Panel And The Respective Icons
+    /// </summary>
+    private void SetUpTwoPlayerPanel()
+    {
+        onePlayerResultPanel.SetActive(false);   //Hide single player panel
+
+        twoPlayerResultPanel.SetActive(true); //Show and setup two player panel
+
+        //Update score
+        player01ScoreText.text = player01Score.ToString();
+        player02ScoreText.text = player02Score.ToString();
+
+
+        bool player1Lose = GameController.instance.GetPlayerGameLoseState(snakeController_01);
+        bool player2Lose = GameController.instance.GetPlayerGameLoseState(snakeController_02);
+
+        //Determine winner based on scores(head to head takes priority
+        if (GameController.instance.IsHeadToHeadCollision() || (player1Lose || player2Lose)) 
+        {
+            Debug.Log("Result Controller: Using HEAD-TO-HEAD result logic");
+            SetUpHeadToHeadResult();
+        }
+        else
+        {
+            Debug.Log("Result Controller: Using NORMAL two player result logic");
+            SetUpNormalTwoPlayerResult();
+        }
+
+        DisableSinglePlayerButtons();
+        EnableTwoPlayerButtons();
+    }
+
+    private void SetUpHeadToHeadResult()
+    {
+        Debug.Log($"Head-to-head collision detected. P1 Score: {player01Score}, P2 Score: {player02Score}");
+
+        if (player01Score > player02Score)
+        {
+            Debug.Log("Player 1 wins by score");
+            PlayerOneWins();
+        }
+        else if (player02Score > player01Score)
+        {
+            Debug.Log("Player 2 wins by score");
+            PlayerTwoWins();
+        }
+        else
+        {
+            Debug.Log("Draw - equal scores");
+            Draw();
+        }
+    }
+
+
+    private void SetUpNormalTwoPlayerResult()
+    {
+        bool player1Won = GameController.instance.GetPlayerGameWonState(snakeController_01);
+        bool player1Lose = GameController.instance.GetPlayerGameLoseState(snakeController_01);
+        bool player2Won = GameController.instance.GetPlayerGameWonState(snakeController_02);
+        bool player2Lose = GameController.instance.GetPlayerGameLoseState(snakeController_02);
+
+        if (player1Won || player2Lose)
+        {
+            PlayerOneWins();
+        }
+        else if (player2Won || player1Lose)
+        {
+            PlayerTwoWins();
+        }
+        else 
+        {
+            Draw();
+        }
+    }
+
+    private void PlayerOneWins()
+    {
+        SetPlayerIcons(true, false, false, true);
+    }
+    private void PlayerTwoWins()
+    {
+        SetPlayerIcons(false, true, true, false);
+    }
+    private void Draw()
+    {
+        SetPlayerIcons(false, true, false, true);
+    }
+
+
+    private void SetPlayerIcons(bool p1Win, bool p1Lose, bool p2Win, bool p2Lose)
+    {
+        if (player01WinIcon != null) player01WinIcon.SetActive(p1Win);
+        if (player01LoseIcon != null) player01LoseIcon.SetActive(p1Lose);
+        if (player02WinIcon != null) player02WinIcon.SetActive(p2Win);
+        if (player02LoseIcon != null) player02LoseIcon.SetActive(p2Lose);
+    }
+
+
     private void GetSnakesScore()
     {
-        player01_Score = GameController.instance.GetScore(snakeController_01);
-        player02_Score = GameController.instance.GetScore(snakeController_02);
-    }
-
-    /// <summary>
-    /// Writes final scores to UI.
-    /// </summary>
-    public void FinalScore()
-    {
-        playerOneScore_01.text = player01_Score.ToString();
-        playerOneScore_02.text = player01_Score.ToString();
-        playerTwoScore.text = player02_Score.ToString();
-    }
-
-    /// <summary>
-    /// Determines winner/loser visuals.
-    /// Head-to-head collision take priority.
-    /// </summary>
-    private void ChoseGameWonIconOrLose()
-    {
-        if (MainMenuController.isTwoPlayerModeOn)
+        if (GameController.instance != null)
         {
-            if (GameController.instance.IsHeadToHeadCollision())
-            {
-                if (player01_Score > player02_Score)
-                {
-                    PlayerOneWon();
-                }
-                else if (player02_Score > player01_Score)
-                {
-                    PlayerTwoWon();
-                }
-                else
-                {
-                    NoPlayerWon();
-                }
-                return;
-            }
+            player01Score = GameController.instance.GetScore(snakeController_01);
 
-            if (isPlayerOneWon)
+            // Only get player 2 score in two player mode
+            if (MainMenuController.isTwoPlayerModeOn)
             {
-                PlayerOneWon();
-            }
-            else if (isPlayerOneLose)
-            {
-                PlayerTwoWon();
-            }
-            else if (isPlayerTwoWon)
-            {
-                PlayerTwoWon();
-            }
-            else if (isPlayerTwoLose)
-            {
-                PlayerOneWon();
-            }
-
-            return;
-        }
-        else
-        {
-            if (isPlayerOneLose)
-            {
-                player01_WonIcon.SetActive(!isPlayerOneLose);
-                player01_LoseIcon.SetActive(isPlayerOneLose);
-            }
-            else if (isPlayerOneWon)
-            {
-                player01_WonIcon.SetActive(isPlayerOneWon);
-                player01_LoseIcon.SetActive(!isPlayerOneWon);
-            }
-            else
-            {
-                NoPlayerWon();
+                player02Score = GameController.instance.GetScore(snakeController_02);
             }
         }
     }
 
-    /// <summary>
-    /// Marks player one as winner.
-    /// </summary>
-    private void PlayerOneWon()
-    {
-        snakeOneWonIcon.SetActive(true);
-        snakeOneLoseIcon.SetActive(false);
-
-        snakeTwoWonIcon.SetActive(false);
-        snakeTwoLoseIcon.SetActive(true);
-    }
-
-    /// <summary>
-    /// Marks player two as winner.
-    /// </summary>
-    private void PlayerTwoWon()
-    {
-        snakeOneWonIcon.SetActive(false);
-        snakeOneLoseIcon.SetActive(true);
-
-        snakeTwoWonIcon.SetActive(true);
-        snakeTwoLoseIcon.SetActive(false);
-    }
-
-    /// <summary>
-    /// Draw condition: both players lose.
-    /// </summary>
-    private void NoPlayerWon()
-    {
-        snakeOneWonIcon.SetActive(false);
-        snakeOneLoseIcon.SetActive(true);
-
-        snakeTwoWonIcon.SetActive(false);
-        snakeTwoLoseIcon.SetActive(true);
-    }
-
-    
     /// <summary>
     /// Updates and returns whether the match has ended.
     /// </summary>
     private bool IsGameOver()
     {
-        isPlayerOneWon = GameController.instance.GetPlayerGameWonState(snakeController_01);
-        isPlayerOneLose = GameController.instance.GetPlayerGameLoseState(snakeController_01);
-        isPlayerTwoWon = GameController.instance.GetPlayerGameWonState(snakeController_02);
-        isPlayerTwoLose = GameController.instance.GetPlayerGameLoseState(snakeController_02);
+        if (GameController.instance == null) return false;
+
+        bool player1Won = GameController.instance.GetPlayerGameWonState(snakeController_01);
+        bool player1Lose = GameController.instance.GetPlayerGameLoseState(snakeController_01);
 
         if (!MainMenuController.isTwoPlayerModeOn)
         {
-            return isPlayerOneLose || isPlayerOneWon;
+            return player1Won || player1Lose;
         }
 
-        return isPlayerOneLose || isPlayerOneWon || isPlayerTwoLose || isPlayerTwoWon;
+        bool player2Won = GameController.instance.GetPlayerGameWonState(snakeController_02);
+        bool player2Lose = GameController.instance.GetPlayerGameLoseState(snakeController_02);
+
+        return player1Won || player2Lose || player2Won || player2Lose;
+
     }
+
+    #region Button Management
+    private void EnsureButtonsWork()
+    {
+        //Make sure EventSystem exist
+        if (EventSystem.current == null)
+        {
+            GameObject eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        }
+
+        //Ensure graphic raycaster is enabled
+        if (graphicRaycaster != null) graphicRaycaster.enabled = true;
+    }
+
+    private void EnableSinglePlayerButtons()
+    {
+        if (singlePlayerMainMenuButton != null)
+        {
+            singlePlayerMainMenuButton.gameObject.SetActive(true);
+            singlePlayerMainMenuButton.interactable = true;
+        }
+        if (singlePlayerQuitButton != null)
+        {
+            singlePlayerQuitButton.gameObject.SetActive(true);
+            singlePlayerQuitButton.interactable = true;
+        }
+    }
+
+    private void EnableTwoPlayerButtons()
+    {
+        if (twoPlayerMainMenuButton != null)
+        {
+            twoPlayerMainMenuButton.gameObject.SetActive(true);
+            twoPlayerMainMenuButton.interactable = true;
+        }
+        if (twoPlayerQuitButton != null)
+        {
+            twoPlayerQuitButton.gameObject.SetActive(true);
+            twoPlayerQuitButton.interactable = true;
+        }
+    }
+
+    private void DisableSinglePlayerButtons()
+    {
+        if (singlePlayerMainMenuButton != null)
+        {
+            singlePlayerMainMenuButton.interactable = false;
+            singlePlayerMainMenuButton.gameObject.SetActive(false);
+        }
+        if (singlePlayerQuitButton != null)
+        {
+            singlePlayerQuitButton.interactable = false;
+            singlePlayerQuitButton.gameObject.SetActive(false);
+        }
+    }
+
+    private void DisableTwoPlayerButtons()
+    {
+        if (twoPlayerMainMenuButton != null)
+        {
+            twoPlayerMainMenuButton.interactable = false;
+            twoPlayerMainMenuButton.gameObject.SetActive(false);
+        }
+        if (twoPlayerQuitButton != null)
+        {
+            twoPlayerQuitButton.interactable = false;
+            twoPlayerQuitButton.gameObject.SetActive(false);
+        }
+    }
+
+    #endregion
+
 
 
     /// <summary>
@@ -298,9 +408,9 @@ public class GameResultController : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
-        if (mainMenuButton != null) mainMenuButton.onClick.RemoveListener(LoadMainMenu);
-        if (mainMenuButton_2 != null) mainMenuButton_2.onClick.RemoveListener(LoadMainMenu);
-        if (quitButton != null) quitButton.onClick.RemoveListener(QuitGame);
-        if (quitButton_2 != null) quitButton_2.onClick.RemoveListener(QuitGame);
+        if (singlePlayerMainMenuButton != null) singlePlayerMainMenuButton.onClick.RemoveListener(LoadMainMenu);
+        if (twoPlayerMainMenuButton != null) twoPlayerMainMenuButton.onClick.RemoveListener(LoadMainMenu);
+        if (singlePlayerQuitButton != null) singlePlayerQuitButton.onClick.RemoveListener(QuitGame);
+        if (twoPlayerQuitButton != null) twoPlayerQuitButton.onClick.RemoveListener(QuitGame);
     }
 }

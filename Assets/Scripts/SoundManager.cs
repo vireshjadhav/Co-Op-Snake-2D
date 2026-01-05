@@ -145,5 +145,6 @@ public enum Sounds
     ShieldPickUP,
     ScoreBoosterPickUP,
     SpeedBoosterPickUP,
+    ShieldBlock,
     Win
 }
