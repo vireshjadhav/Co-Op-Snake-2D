@@ -73,14 +73,6 @@ public class SnakeController : MonoBehaviour
 
     private float spriteDirectionAngle = 90f;  //Used to store last valid sprite angle for the head.
 
-    [Header("Temparary Tools")]
-    [SerializeField] private float snakeBodyUlterInterval = 0.5f; //How often (in seconds) to automatically grow/shrink the snake.
-    [SerializeField] private int maxBodySize = 20; //Maximum body size for the automatic growth system.
-    private float snakeUlterTimer = 0f; //Timer for automatic size change
-    private bool snakeCanGrow = true;  //True when auto-grow is allowed
-    private bool snakeCanShrink = false; //True when auto-shrink is allowed
-    private bool isGrowingPhase = true; //When true: snake grows until maxBodySize, then switches to shrinking phase
-
 
     private void Awake()
     {
@@ -178,8 +170,6 @@ public class SnakeController : MonoBehaviour
                 return;
             }
         }
-
-        UpdateSizeFlags();
     }
 
     // Update is called once per frame
@@ -188,7 +178,6 @@ public class SnakeController : MonoBehaviour
         if (!isAlive) return; //freeze input when dead
         HandleInput();  //Read player input
         HandleGridMovement(); //Move snake on grid-based timer
-        HandleAutomaticSizeChange(); //Auto-grow/shrink over time
     }
 
     //Return current grow amount for futher features
@@ -346,9 +335,6 @@ public class SnakeController : MonoBehaviour
                 tailHistory.RemoveAt(tailHistory.Count -1);
             }
 
-            Debug.Log("Previous Tail before removing: " + lastVacatedTailCell);
-
-
             //Trim extra position so list lenght matches snakeBodySize
             if (snakeMovePositionList.Count > snakeBodySize)
             {
@@ -364,6 +350,12 @@ public class SnakeController : MonoBehaviour
 
             //Update sprites (Straight / Corner / tail) and rotations
             UpdateBodySprite();
+
+
+            if (levelGridController != null)
+            {
+                levelGridController.CheckSnakeItemCollisions(this, gridPosition);
+            }
         }
     }
 
@@ -570,7 +562,6 @@ public class SnakeController : MonoBehaviour
         //Update lists and size
         UpdateBodyPositions();
         UpdateBodySprite();
-        UpdateSizeFlags();
     }
 
 
@@ -608,7 +599,6 @@ public class SnakeController : MonoBehaviour
         //Keep visuals and flags in sync
         UpdateBodyPositions();
         UpdateBodySprite();
-        UpdateSizeFlags();
     }
 
     /// <summary>
@@ -737,63 +727,6 @@ public class SnakeController : MonoBehaviour
                     seg.transform.eulerAngles = Vector3.zero;
                 }
 
-            }
-        }
-    }
-
-    /// <summary>
-    /// Update auto-grow/shrink flags depending on current size.
-    /// -When growing phase: grow until maxBodySize, then switch to shrinking phase.
-    /// -When shrinking phase: shrink until minBodySize, then switch back to growing phase
-    /// </summary>
-    private void UpdateSizeFlags()
-    {
-        if (isGrowingPhase)
-        {
-            snakeCanGrow = snakeBodySize < maxBodySize;
-            snakeCanShrink = false;
-
-            if (snakeBodySize >= maxBodySize)
-            {
-                isGrowingPhase = false;
-                snakeCanGrow = false;
-                snakeCanShrink = true;
-            }
-        }
-        else
-        {
-            snakeCanGrow = false;
-            snakeCanShrink = snakeBodySize > minBodySize;
-
-            if (snakeBodySize <= minBodySize)
-            {
-                isGrowingPhase = true;
-                snakeCanGrow = true;
-                snakeCanShrink = false;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Every 'snakeBodyUlterInterval' seconds, automatically:
-    /// - Grow while in growing phase
-    /// - Shrink while in shrinking phase
-    /// Only happens if snake is currently moving.
-    /// </summary>
-    private void HandleAutomaticSizeChange()
-    {
-        snakeUlterTimer += Time.deltaTime;
-        if (snakeUlterTimer >= snakeBodyUlterInterval)
-        {
-            snakeUlterTimer = 0f;
-
-            if (snakeCanGrow && gridMoveDirection != Vector2Int.zero)
-            {
-                SnakeGrow(snakeBodyGrowSize);
-            }
-            else if (snakeCanShrink && gridMoveDirection != Vector2Int.zero)
-            {
-                SnakeShrink(snakeBodyShrinkSize);
             }
         }
     }
