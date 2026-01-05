@@ -709,6 +709,8 @@ public class SnakeController : MonoBehaviour
             {
                 Debug.Log($"{name}: Self-collision at {newHeadPos}");
 
+                SoundManager.Instance.Play(Sounds.PlayerDeath);
+
                 //If shiedl available, consume it and cancel the move(revert to previousHead).
                 if (TryConsumeShield())
                 {
@@ -749,6 +751,8 @@ public class SnakeController : MonoBehaviour
 
                 GameController.instance.SetHeadToHeadCollision();
 
+                SoundManager.Instance.Play(Sounds.PlayerDeath);
+
                 //Shield consumes and cancels move
                 if (TryConsumeShield())
                 {
@@ -768,30 +772,32 @@ public class SnakeController : MonoBehaviour
             }
 
             //Fallback: scene query if GameController isn't present
-            for (int i = 0; i < otherOccupied.Count; i++) {
-                    if (otherOccupied[i] != newHeadPos) continue;
+            for (int i = 0; i < otherOccupied.Count; i++)
+            {
+                if (otherOccupied[i] != newHeadPos) continue;
 
-                    Debug.Log($"{name}: collided (fallback) with snake '{other.name}' at {newHeadPos}");
+                Debug.Log($"{name}: collided (fallback) with snake '{other.name}' at {newHeadPos}");
 
-                    if (TryConsumeShield())
-                    {
-                        gridPosition = previousHead;
-                        if (levelGridController != null)
-                            transform.position = levelGridController.GridToWorld(gridPosition);
-                        else
-                            transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
+                SoundManager.Instance.Play(Sounds.PlayerDeath);
 
-                        gridMoveDirection = Vector2Int.zero;
-                        nextMoveDirection = Vector2Int.zero;
-                        return true;
-                    }
+                if (TryConsumeShield())
+                {
+                    gridPosition = previousHead;
+                    if (levelGridController != null)
+                        transform.position = levelGridController.GridToWorld(gridPosition);
+                    else
+                        transform.position = new Vector3(gridPosition.x, gridPosition.y, 0f);
 
-                    OnCollideWithSnake();
+                    gridMoveDirection = Vector2Int.zero;
+                    nextMoveDirection = Vector2Int.zero;
                     return true;
                 }
-            }
-        return false; //no collision handled
 
+                OnCollideWithSnake();
+                return true;
+            }
+        }
+        return false; //no collision handled
     }
 
     private void OnCollideWithSnake()

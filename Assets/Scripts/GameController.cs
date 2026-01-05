@@ -131,8 +131,10 @@ public class GameController : MonoBehaviour
     public void UpdateGameLoseState(SnakeController snake, bool state)
     {
         if (state)
+        {
             playerLoseState[snake] = true;
-        else 
+        }
+        else
             playerLoseState[snake] = false;
     }
 
@@ -155,6 +157,7 @@ public class GameController : MonoBehaviour
         if (playerScores[snake] >= winPoints)
         {
             UpdateGameWonState(snake, true);
+            SoundManager.Instance.Play(Sounds.Win);
         }
     }
 

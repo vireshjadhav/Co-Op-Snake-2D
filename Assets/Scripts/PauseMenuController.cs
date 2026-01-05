@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -8,6 +9,7 @@ using UnityEngine.UI;
 /// - Pause / Resume logic
 /// - Options menu inside pause
 /// - Scene navigation
+/// - In-game audio settings
 /// - Blocking pause when game is won or lost
 /// </summary>
 public class PauseMenuController : MonoBehaviour
@@ -56,9 +58,7 @@ public class PauseMenuController : MonoBehaviour
 
         if (musicSlider != null) musicSlider.onValueChanged.AddListener(OnMusicVolumeChange);
         if (effectSlider != null) effectSlider.onValueChanged.AddListener(OnEffectVolumeChange);
-
     }
-
 
     /// <summary>
     /// Checks for pause input and game-over state every frame.
@@ -82,8 +82,8 @@ public class PauseMenuController : MonoBehaviour
     }
 
     /// <summary>
-    /// Toggles pause state.
-    /// Freezes/unfreezes game time and manages cursor state.
+    /// Toggles pause state and freeze game time.
+    /// Audio sliders are synced before showing UI.
     /// </summary>
     private void TogglePause()
     {
@@ -92,6 +92,7 @@ public class PauseMenuController : MonoBehaviour
         isPaused = !isPaused;
         if (isPaused)
         {
+            SyncSliders();
             Time.timeScale = 0f;
             if (pauseMenuPanel != null) pauseMenuPanel.SetActive(true);
             Cursor.lockState = CursorLockMode.None;
@@ -107,11 +108,25 @@ public class PauseMenuController : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// Synchronizes pause menu audio sliders with SoundManager values
+    /// Called whenever pause or option menu is opened
+    /// </summary>
+    private void SyncSliders()
+    {
+        if (musicSlider !=  null)  musicSlider.SetValueWithoutNotify(SoundManager.Instance.GetMusicVolume());
+
+        if (effectSlider != null) effectSlider.SetValueWithoutNotify(SoundManager.Instance.GetEffectVolume());
+    }
+
     /// <summary>
     /// Resumes gameplay from paused state.
     /// </summary>
     private void ResumeGame()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         Debug.LogError("Resume Button is clicked");   
         if (pauseMenuPanel != null) pauseMenuPanel.SetActive(false);
         if (optionMenuPanel != null) optionMenuPanel.SetActive(false);
@@ -128,16 +143,23 @@ public class PauseMenuController : MonoBehaviour
     /// </summary>
     private void LoadMainMenu()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         SceneManager.LoadScene(mainMenuSceneBuildIndex);
     }
 
     /// <summary>
-    /// Opens option menu from pause menu.
+    /// Opens the option menu inside pause menu
+    /// Refreshes sliders to match current audio state
     /// </summary>
     private void OptionMenuPopUp()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         if (optionMenuPanel != null) optionMenuPanel.SetActive(true);
         if (pauseMenuPanel != null) pauseMenuPanel.SetActive(false);
+
+        SyncSliders();
     }
 
     /// <summary>
@@ -145,6 +167,8 @@ public class PauseMenuController : MonoBehaviour
     /// </summary>
     private void PauseMenuPopUp()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
         if (optionMenuPanel != null) optionMenuPanel.SetActive(false);
         if (pauseMenuPanel != null) pauseMenuPanel.SetActive(true);
     }
@@ -154,6 +178,8 @@ public class PauseMenuController : MonoBehaviour
     /// </summary>
     private void QuitGame()
     {
+        SoundManager.Instance.Play(Sounds.ButtonClick);
+
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -162,8 +188,8 @@ public class PauseMenuController : MonoBehaviour
     }
 
     /// <summary>
-    /// Updates cached win/lose state for both players.
-    /// Used to block pause menu after game ends.
+    /// Blocks pause menu access once game is won or lost
+    /// Prevents invalid UI interaction after game end
     /// </summary>
     private void UpdateGameState()
     {
@@ -176,7 +202,7 @@ public class PauseMenuController : MonoBehaviour
     /// </summary>
     private void OnMusicVolumeChange(float value)
     {
-
+        SoundManager.Instance.SetMusicVolume(value);
     }
 
     /// <summary>
@@ -184,7 +210,7 @@ public class PauseMenuController : MonoBehaviour
     /// </summary>
     private void OnEffectVolumeChange(float value)
     {
-
+        SoundManager.Instance.SetEffectVolume(value);
     }
 
     /// <summary>
